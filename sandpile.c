@@ -96,29 +96,46 @@ static void stabilize() {
   if (!lo || !hi)
     die("malloc failed for shape rows");
   shape_rows(lo, hi);
+
+  const int W = N + 2;
+  int *g = (int *)calloc((size_t)W * W, sizeof(int));
+  if (!g)
+    die("malloc failed for padded grid");
+  for (int i = 0; i < N; ++i)
+    memcpy(g + (size_t)(i + 1) * W + 1, grid[i], N * sizeof(int));
+
   int changed = 0;
   do {
     changed = 0;
     for (int i = 0; i < N; ++i) {
-      for (int j = lo[i]; j <= hi[i]; ++j) {
-        if (grid[i][j] < 4)
-          continue;
-        changed = 1; // topple it
-        grid[i][j] -= 4;
-        if (i > 0)
-          grid[i - 1][j]++;
-        if (j > 0)
-          grid[i][j - 1]++;
-        if (i < N - 1)
-          grid[i + 1][j]++;
-        if (j < N - 1)
-          grid[i][j + 1]++;
+      int *row = g + (size_t)(i + 1) * W + 1;
+      const int a = lo[i], b = hi[i];
+      if (a > b)
+        continue;
+      int *up = row - W, *dn = row + W;
+      int left = row[a - 1];
+      int cur = row[a];
+      for (int j = a; j <= b; ++j) {
+        int t = cur >= 4;
+        changed |= t;
+        up[j] += t;
+        dn[j] += t;
+        row[j - 1] = left + t;
+        left = cur - 4 * t;
+        cur = row[j + 1] + t;
       }
+      row[b] = left;
+      row[b + 1] = cur;
     }
   } while (changed);
+
+  for (int i = 0; i < N; ++i)
+    memcpy(grid[i], g + (size_t)(i + 1) * W + 1, N * sizeof(int));
+  free(g);
   free(lo);
   free(hi);
 }
+
 void find_identity() {
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
