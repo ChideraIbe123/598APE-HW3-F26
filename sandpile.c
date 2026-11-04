@@ -104,22 +104,33 @@ static void stabilize() {
   for (int i = 0; i < N; ++i)
     memcpy(g + (size_t)(i + 1) * W + 1, grid[i], N * sizeof(int));
 
+  const int c = N / 2;
+  const int rows = N % 2 ? c + 1 : N;
+  int *junk = (int *)calloc(W, sizeof(int));
+  if (!junk)
+    die("malloc failed for junk row");
+
   int changed = 0;
   do {
     changed = 0;
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < rows; ++i) {
       int *row = g + (size_t)(i + 1) * W + 1;
       const int a = lo[i], b = hi[i];
       if (a > b)
         continue;
       int *up = row - W, *dn = row + W;
+      int dm = 1;
+      if (N % 2 && i == c - 1)
+        dm = 2;
+      if (N % 2 && i == c)
+        dn = junk + 1;
       int left = row[a - 1];
       int cur = row[a];
       for (int j = a; j <= b; ++j) {
         int t = cur >= 4;
         changed |= t;
         up[j] += t;
-        dn[j] += t;
+        dn[j] += dm * t;
         row[j - 1] = left + t;
         left = cur - 4 * t;
         cur = row[j + 1] + t;
@@ -129,8 +140,11 @@ static void stabilize() {
     }
   } while (changed);
 
-  for (int i = 0; i < N; ++i)
+  for (int i = 0; i < rows; ++i)
     memcpy(grid[i], g + (size_t)(i + 1) * W + 1, N * sizeof(int));
+  for (int i = rows; i < N; ++i)
+    memcpy(grid[i], grid[N - 1 - i], N * sizeof(int));
+  free(junk);
   free(g);
   free(lo);
   free(hi);
