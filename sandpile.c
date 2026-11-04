@@ -90,6 +90,56 @@ static void shape_rows(int *lo, int *hi) {
   }
 }
 
+static int topple_row(int *row, int *up, int *dn, int a, int b, int dm) {
+  if (a > b)
+    return 0;
+  int changed = 0;
+  int left = row[a - 1];
+  int cur = row[a];
+  for (int j = a; j <= b; ++j) {
+    int t = cur >> 2;
+    changed = changed | t;
+    up[j] = up[j] + t;
+    dn[j] = dn[j] + dm * t;
+    row[j - 1] = left + t;
+    left = cur & 3;
+    cur = row[j + 1] + t;
+  }
+  row[b] = left;
+  row[b + 1] = cur;
+  return changed;
+}
+
+static int topple_pair(int *top, int *bot, int *up, int *dn, int start,
+                       int end) {
+  if (start > end)
+    return 0;
+  int changed = 0;
+  int top_left = top[start - 1];
+  int top_cur = top[start];
+  int bot_left = bot[start - 1];
+  int bot_cur = bot[start];
+  for (int j = start; j <= end; ++j) {
+    int top_t = top_cur >> 2;
+    bot_cur = bot_cur + top_t;
+    int bot_t = bot_cur >> 2;
+    up[j] = up[j] + top_t;
+    dn[j] = dn[j] + bot_t;
+    top[j - 1] = top_left + top_t;
+    bot[j - 1] = bot_left + bot_t;
+    top_left = (top_cur & 3) + bot_t;
+    bot_left = bot_cur & 3;
+    top_cur = top[j + 1] + top_t;
+    bot_cur = bot[j + 1] + bot_t;
+    changed = changed | top_t | bot_t;
+  }
+  top[end] = top_left;
+  bot[end] = bot_left;
+  top[end + 1] = top_cur;
+  bot[end + 1] = bot_cur;
+  return changed;
+}
+
 static void stabilize() {
   int *lo = (int *)malloc(N * sizeof(int));
   int *hi = (int *)malloc(N * sizeof(int));
@@ -115,28 +165,42 @@ static void stabilize() {
     changed = 0;
     for (int i = 0; i < rows; ++i) {
       int *row = g + (size_t)(i + 1) * W + 1;
-      const int a = lo[i], b = hi[i];
-      if (a > b)
+      int *up = row - W;
+      int *dn = row + W;
+      int a = lo[i];
+      int b = hi[i];
+
+      int use_pair = i + 1 < rows;
+      if (N % 2 && i + 1 >= c - 1)
+        use_pair = 0;
+
+      if (use_pair) {
+        int *bot = row + W;
+        int *bot_dn = bot + W;
+        int a2 = lo[i + 1];
+        int b2 = hi[i + 1];
+        int start = MAX(a, a2);
+        int end = MIN(b, b2);
+        if (start <= end) {
+          changed |= topple_row(row, up, bot, a, start - 1, 1);
+          changed |= topple_row(bot, row, bot_dn, a2, start - 1, 1);
+          changed |= topple_pair(row, bot, up, bot_dn, start, end);
+          changed |= topple_row(row, up, bot, end + 1, b, 1);
+          changed |= topple_row(bot, row, bot_dn, end + 1, b2, 1);
+        } else {
+          changed |= topple_row(row, up, bot, a, b, 1);
+          changed |= topple_row(bot, row, bot_dn, a2, b2, 1);
+        }
+        i = i + 1;
         continue;
-      int *up = row - W, *dn = row + W;
+      }
+
       int dm = 1;
       if (N % 2 && i == c - 1)
         dm = 2;
       if (N % 2 && i == c)
         dn = junk + 1;
-      int left = row[a - 1];
-      int cur = row[a];
-      for (int j = a; j <= b; ++j) {
-        int t = cur >> 2;
-        changed |= t;
-        up[j] += t;
-        dn[j] += dm * t;
-        row[j - 1] = left + t;
-        left = cur & 3;
-        cur = row[j + 1] + t;
-      }
-      row[b] = left;
-      row[b + 1] = cur;
+      changed |= topple_row(row, up, dn, a, b, dm);
     }
   } while (changed);
 
@@ -148,7 +212,8 @@ static void stabilize() {
   free(g);
   free(lo);
   free(hi);
-}
+}  
+
 
 void find_identity() {
   for (int i = 0; i < N; ++i) {
