@@ -72,32 +72,53 @@ static void render(char *filename) {
   free(pixels);
 }
 
+static void shape_rows(int *lo, int *hi) {
+  long long c = N / 2;
+  for (int i = 0; i < N; ++i) {
+    long long d = c * c - (i - c) * (i - c);
+    lo[i] = 0;
+    hi[i] = -1;
+    if (d < 0)
+      continue;
+    long long r = (long long)sqrt((double)d);
+    while (r * r > d)
+      r--;
+    while ((r + 1) * (r + 1) <= d)
+      r++;
+    lo[i] = (int)(c - r);
+    hi[i] = (int)MIN(MIN(c + r, (long long)MAX(i, N - 1 - i)), N - 1);
+  }
+}
+
 static void stabilize() {
+  int *lo = (int *)malloc(N * sizeof(int));
+  int *hi = (int *)malloc(N * sizeof(int));
+  if (!lo || !hi)
+    die("malloc failed for shape rows");
+  shape_rows(lo, hi);
   int changed = 0;
   do {
     changed = 0;
     for (int i = 0; i < N; ++i) {
-      for (int j = 0; j <= MAX(i, N - 1 - i); ++j) {
-        if ((i - N / 2) * (i - N / 2) + (j - N / 2) * (j - N / 2) <=
-            (N / 2) * (N / 2)) {
-          if (grid[i][j] < 4)
-            continue;
-          changed = 1; // topple it
-          grid[i][j] -= 4;
-          if (i > 0)
-            grid[i - 1][j]++;
-          if (j > 0)
-            grid[i][j - 1]++;
-          if (i < N - 1)
-            grid[i + 1][j]++;
-          if (j < N - 1)
-            grid[i][j + 1]++;
-        }
+      for (int j = lo[i]; j <= hi[i]; ++j) {
+        if (grid[i][j] < 4)
+          continue;
+        changed = 1; // topple it
+        grid[i][j] -= 4;
+        if (i > 0)
+          grid[i - 1][j]++;
+        if (j > 0)
+          grid[i][j - 1]++;
+        if (i < N - 1)
+          grid[i + 1][j]++;
+        if (j < N - 1)
+          grid[i][j + 1]++;
       }
     }
   } while (changed);
+  free(lo);
+  free(hi);
 }
-
 void find_identity() {
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
