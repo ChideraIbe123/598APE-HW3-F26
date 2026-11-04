@@ -127,12 +127,12 @@ static void stabilize() {
       int left = row[a - 1];
       int cur = row[a];
       for (int j = a; j <= b; ++j) {
-        int t = cur >= 4;
+        int t = cur >> 2;
         changed |= t;
         up[j] += t;
         dn[j] += dm * t;
         row[j - 1] = left + t;
-        left = cur - 4 * t;
+        left = cur & 3;
         cur = row[j + 1] + t;
       }
       row[b] = left;
