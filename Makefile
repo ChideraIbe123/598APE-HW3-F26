@@ -1,8 +1,7 @@
 FUNC := gcc
 copt := -c
 OBJ_DIR := ./bin/
-FLAGS := -O3 -flto -funroll-loops -Wa,-mbranches-within-32B-boundaries -lm -g -Werror
-
+FLAGS := -O3 -fopenmp -flto -funroll-loops -Wa,-mbranches-within-32B-boundaries -lm -g -Werror
 C_FILES := $(wildcard src/*.c)
 OBJ_FILES := $(addprefix $(OBJ_DIR),$(notdir $(C_FILES:.c=.obj)))
 

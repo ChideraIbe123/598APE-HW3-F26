@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <omp.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -140,6 +141,51 @@ static int topple_pair(int *top, int *bot, int *up, int *dn, int start,
   return changed;
 }
 
+static int sweep_rows(int *g, int W, int *lo, int *hi, int *junk, int c,
+                      int r0, int r1) {
+  int changed = 0;
+  for (int i = r0; i < r1; ++i) {
+    int *row = g + (size_t)(i + 1) * W + 1;
+    int *up = row - W;
+    int *dn = row + W;
+    int a = lo[i];
+    int b = hi[i];
+
+    int use_pair = i + 1 < r1;
+    if (N % 2 && i + 1 >= c - 1)
+      use_pair = 0;
+
+    if (use_pair) {
+      int *bot = row + W;
+      int *bot_dn = bot + W;
+      int a2 = lo[i + 1];
+      int b2 = hi[i + 1];
+      int start = MAX(a, a2);
+      int end = MIN(b, b2);
+      if (start <= end) {
+        changed |= topple_row(row, up, bot, a, start - 1, 1);
+        changed |= topple_row(bot, row, bot_dn, a2, start - 1, 1);
+        changed |= topple_pair(row, bot, up, bot_dn, start, end);
+        changed |= topple_row(row, up, bot, end + 1, b, 1);
+        changed |= topple_row(bot, row, bot_dn, end + 1, b2, 1);
+      } else {
+        changed |= topple_row(row, up, bot, a, b, 1);
+        changed |= topple_row(bot, row, bot_dn, a2, b2, 1);
+      }
+      i = i + 1;
+      continue;
+    }
+
+    int dm = 1;
+    if (N % 2 && i == c - 1)
+      dm = 2;
+    if (N % 2 && i == c)
+      dn = junk + 1;
+    changed |= topple_row(row, up, dn, a, b, dm);
+  }
+  return changed;
+}
+
 static void stabilize() {
   int *lo = (int *)malloc(N * sizeof(int));
   int *hi = (int *)malloc(N * sizeof(int));
@@ -160,47 +206,18 @@ static void stabilize() {
   if (!junk)
     die("malloc failed for junk row");
 
+  const int B = 16;
+  const int nblocks = (rows + B - 1) / B;
   int changed = 0;
   do {
     changed = 0;
-    for (int i = 0; i < rows; ++i) {
-      int *row = g + (size_t)(i + 1) * W + 1;
-      int *up = row - W;
-      int *dn = row + W;
-      int a = lo[i];
-      int b = hi[i];
-
-      int use_pair = i + 1 < rows;
-      if (N % 2 && i + 1 >= c - 1)
-        use_pair = 0;
-
-      if (use_pair) {
-        int *bot = row + W;
-        int *bot_dn = bot + W;
-        int a2 = lo[i + 1];
-        int b2 = hi[i + 1];
-        int start = MAX(a, a2);
-        int end = MIN(b, b2);
-        if (start <= end) {
-          changed |= topple_row(row, up, bot, a, start - 1, 1);
-          changed |= topple_row(bot, row, bot_dn, a2, start - 1, 1);
-          changed |= topple_pair(row, bot, up, bot_dn, start, end);
-          changed |= topple_row(row, up, bot, end + 1, b, 1);
-          changed |= topple_row(bot, row, bot_dn, end + 1, b2, 1);
-        } else {
-          changed |= topple_row(row, up, bot, a, b, 1);
-          changed |= topple_row(bot, row, bot_dn, a2, b2, 1);
-        }
-        i = i + 1;
-        continue;
+    for (int phase = 0; phase < 2; ++phase) {
+#pragma omp parallel for schedule(static, 1) reduction(| : changed)
+      for (int k = phase; k < nblocks; k += 2) {
+        int r0 = k * B;
+        int r1 = MIN(rows, r0 + B);
+        changed |= sweep_rows(g, W, lo, hi, junk, c, r0, r1);
       }
-
-      int dm = 1;
-      if (N % 2 && i == c - 1)
-        dm = 2;
-      if (N % 2 && i == c)
-        dn = junk + 1;
-      changed |= topple_row(row, up, dn, a, b, dm);
     }
   } while (changed);
 
@@ -212,7 +229,7 @@ static void stabilize() {
   free(g);
   free(lo);
   free(hi);
-}  
+}
 
 
 void find_identity() {
@@ -241,6 +258,8 @@ int main(int argc, char **argv) {
       parsed > INT32_MAX)
     die("grid size must be a positive int");
   N = (int)parsed;
+  if (!getenv("OMP_NUM_THREADS"))
+    omp_set_num_threads(MAX(1, omp_get_num_procs() - 1));
 
   grid = (int **)malloc(N * sizeof(int *));
   for (int i = 0; i < N; ++i) {
