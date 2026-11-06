@@ -1,45 +1,57 @@
-# CS598APE HW3
+# CS598APE HW3 - Abelian Sandpile
 
-This repository contains code for homework 3 of CS598APE. It is relatively
-simple in comparison to HW1 and HW2 to ensure you have enough time to work on
-the course project. 
+My optimized version of the sandpile identity code. On my machine (4 vCPUs of a Xeon Silver 4216) `./sandpile.exe 1001` went from 615 s to 21.5 s, about 28.6x faster. The output image is byte-for-byte the same as the original.
 
-`sandpile.c` contains the implementation of finding the identity element of a 2D
-abelian sandpile.
+## Build and run
 
-![Identity sandpile on a 1001x1001 pacman grid](identity-ref.png)
-
-*Identity sandpile on a 1001x1001 pacman grid*
-
-
-To compile the program, run:
+You just need gcc with OpenMP (I used gcc 15.2) and make.
 
 ```bash
-make all
-```
-
-To clean existing build artifacts, run:
-
-```bash
-make clean
-```
-
-Usage (after compiling):
-
-```bash
-./sandpile.exe <N> 
-```
-
-where `N` is the grid size
-
-Consider speeding up the generation of this 1001x1001 identity sandpile (which
-takes approximately ~3m 40s on my local laptop under the default setup)
-
-```bash
+make
 ./sandpile.exe 1001
 ```
 
-For an optional, ungraded challenge, see how large a sandpile you can compute
-on the course VMs and report the grid size and runtime. There is no prescribed
-upper limit on `N` for this challenge.
+It writes `identity.png`. By default it uses one thread fewer than the number of cores it can see. To pick the thread count yourself, set `OMP_NUM_THREADS`. My timings used 3 threads on cores 1-3:
 
+```bash
+OMP_NUM_THREADS=3 taskset -c 1-3 ./sandpile.exe 1001
+```
+
+Or with Docker:
+
+```bash
+docker build -t sandpile .
+docker run --rm sandpile
+```
+
+## Checking it's still correct
+
+The output should match the reference image exactly:
+
+```bash
+cmp identity.png identity-ref.png && echo same
+```
+
+## Benchmarking
+
+Each optimization is its own commit, so you can check one out and time it. To time the original, check out `15fe837`. The original takes 10 minutes or so, so N=401 is a quicker way to compare commits.
+
+```bash
+git checkout <commit>
+make clean && make
+time ./sandpile.exe 1001
+git checkout main
+```
+
+| # | Commit | Change | N=1001 time |
+|---|--------|--------|-------------|
+| 0 | `15fe837` | original | 615 s |
+| 1 | `4a3be23` | `-O3 -flto -funroll-loops` + branch alignment flag | 360 s |
+| 2 | `54bba0f` | store the pacman shape as one [lo, hi] range per row | 269 s |
+| 3 | `4db5789` | padded grid, branch-free topple | 172 s |
+| 4 | `8a66f68` | mirror symmetry, only compute the top half | 91 s |
+| 5 | `bb339e8` | topple with `>> 2` and `& 3` | 64 s |
+| 6 | `ffa222a` | process rows in pairs | 54 s |
+| 7 | `852fa69` | OpenMP (3 threads) | 21.5 s |
+
+All flags are in the `Makefile`.
